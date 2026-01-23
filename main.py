@@ -49,32 +49,31 @@ def get_clothing_advice(temp, condition):
     
     # TEMPERATURE LOGIC
     if temp >= 30:
-        advice += "It is boiling hot! 🔥 Wear shorts, sandals, and a thin cotton t-shirt. Do NOT wear jeans unless you want to melt."
+        advice += "It is boiling hot! 🔥 Wear shorts, sandals, and a thin cotton t-shirt."
     elif temp >= 20:
-        advice += "It's actually nice. Jeans and a t-shirt are perfect. Maybe bring sunglasses so you look cool. 😎"
+        advice += "It's nice out. Jeans and a t-shirt are perfect. 😎"
     elif temp >= 10:
-        advice += "It's a bit chilly. You definitely need a jacket or a hoodie. Don't be a hero, cover up."
+        advice += "It's a bit chilly. You definitely need a jacket or a hoodie."
     elif temp >= 0:
         advice += "Okay, it's cold. heavy coat time. Scarf, gloves, the whole deal. 🧣"
     else:
-        advice += "It is FREEZING! ❄️ Wear 7 layers. Wear everything you own. Look like a marshmallow."
+        advice += "It is FREEZING! ❄️ Wear 7 layers. Look like a marshmallow."
 
-    # CONDITION LOGIC
     if condition == "Rainy" or condition == "Stormy":
-        advice += " Also, take an umbrella or you'll look like a drowned rat."
+        advice += " Also, take an umbrella!"
     
     return advice
 
 def get_travel_verdict(condition, wind):
     """Decides if it is safe to travel/school."""
     if condition == "Stormy" or wind > 60:
-        return "Honestly? Stay home. It's nasty out there. 🚨 Not a good time for travel or school runs."
+        return "Honestly? Stay home. It's nasty out there. 🚨"
     elif condition == "Snowy":
-        return "Roads might be slippery. Drive like a grandma or just stay in bed with hot cocoa. ☕"
+        return "Roads might be slippery. Drive safe or stay in bed. ☕"
     elif condition == "Rainy":
-        return "It's wet, but you'll survive. Just drive slow and don't splash anyone."
+        return "It's wet, but you'll survive. Just drive slow."
     else:
-        return "Conditions are perfect! Go explore the world! (Or just go to work, sorry). 🌍"
+        return "Conditions are perfect! Go explore the world! 🌍"
 
 # --- 2. THE SERVER ENDPOINTS ---
 
@@ -87,7 +86,7 @@ def weather_endpoint():
         return jsonify({
             "temperature": str(data['temp']),
             "condition": data['condition'],
-            "humidity": "50", # Simplified for now
+            "humidity": "50", 
             "wind_speed": str(data['wind'])
         })
     return jsonify({"error": "City not found"}), 404
@@ -98,10 +97,8 @@ def chat_endpoint():
     user_text = data.get('message', '').lower()
     
     # 1. SMART CITY DETECTION 🌍
-    # Default to "New York" if no city is found so we ALWAYS give an answer.
-    target_city = "New York" 
+    target_city = "New York" # Default fallback
     
-    # Check for common major cities & countries
     if "paris" in user_text or "france" in user_text: target_city = "Paris"
     elif "london" in user_text or "uk" in user_text: target_city = "London"
     elif "tokyo" in user_text or "japan" in user_text: target_city = "Tokyo"
@@ -113,44 +110,36 @@ def chat_endpoint():
     # 2. GET REAL DATA
     weather = get_live_weather(target_city)
     
-    # If even the default fails (rare), then show error
     if not weather:
-        return jsonify({"reply": "I'm having trouble checking the weather right now. Try again later! 🐧"})
+        return jsonify({"reply": "I'm having trouble connecting to the weather satellite. Try again! 🐧"})
 
-    # 3. ANALYZE USER QUESTION (The Decision Maker)
+    # 3. ANALYZE USER QUESTION
     
-    # CATEGORY: CLOTHING 👗👔
+    # CATEGORY: CLOTHING 👗
     if any(word in user_text for word in ["wear", "clothes", "jacket", "jeans", "shirt", "coat", "dress", "sandals"]):
         verdict = get_clothing_advice(weather['temp'], weather['condition'])
         reply = f"Right now in {weather['city']}, it is {weather['temp']}°C. {verdict}"
 
-    # CATEGORY: TRAVEL / DRIVING 🚗✈️
+    # CATEGORY: TRAVEL / DRIVING 🚗
     elif any(word in user_text for word in ["travel", "drive", "fly", "trip", "visit", "go to"]):
         verdict = get_travel_verdict(weather['condition'], weather['wind'])
         reply = f"Thinking of heading to {weather['city']}? {verdict} (Temp: {weather['temp']}°C)"
 
-    # CATEGORY: KIDS / SCHOOL 🏫👶
+    # CATEGORY: KIDS / SCHOOL 🏫
     elif any(word in user_text for word in ["kids", "school", "safe", "baby"]):
         if weather['condition'] in ["Stormy", "Snowy"] or weather['wind'] > 50:
-            reply = f"⚠️ Safety Alert: It is {weather['condition']} in {weather['city']} with high winds. Maybe keep the little ones inside today."
+            reply = f"⚠️ Safety Alert: It is {weather['condition']} in {weather['city']} with high winds. Keep the kids inside."
         else:
-            reply = f"It's {weather['temp']}°C and {weather['condition']} in {weather['city']}. Totally fine for school! Kick them out the door! 🎓"
+            reply = f"It's {weather['temp']}°C and {weather['condition']} in {weather['city']}. Totally fine for school! 🎓"
 
     # CATEGORY: GENERAL WEATHER (The Catch-All) ☁️
-    # If the user just says "Is it cold?" or "Weather?", we fall into this bucket.
     else:
         sarcasm = ""
         if weather['temp'] > 30: sarcasm = "Start sweating."
         elif weather['temp'] < 5: sarcasm = "Hope you like shivering."
-        else: sarcasm = "Pretty boring, actually."
+        else: sarcasm = "Pretty normal weather."
         
-        reply = f"Here is the situation in {weather['city']}: {weather['temp']}°C and {weather['condition']}. {sarcasm}"
-
-    return jsonify({"reply": reply})
-
-    # CATCH-ALL (If I don't understand)
-    else:
-        reply = f"I'm listening, but I only know about weather, clothes, and safety. Ask me if you should wear a jacket in {target_city}! 🐧"
+        reply = f"Situation in {weather['city']}: {weather['temp']}°C and {weather['condition']}. {sarcasm}"
 
     return jsonify({"reply": reply})
 
