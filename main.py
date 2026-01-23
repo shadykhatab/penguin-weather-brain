@@ -97,50 +97,56 @@ def chat_endpoint():
     data = request.json
     user_text = data.get('message', '').lower()
     
-    # 1. DETECT CITY (Basic logic: look for common cities or assume "New York" for demo)
-    # In a real app, we would use NLP to extract the city name dynamically.
-    # For this demo, we will check if the user typed a specific city, otherwise default to "local".
-    target_city = "New York" # Default
-    if "paris" in user_text: target_city = "Paris"
-    elif "london" in user_text: target_city = "London"
-    elif "tokyo" in user_text: target_city = "Tokyo"
+    # 1. SMART CITY DETECTION 🌍
+    # Default to "New York" if no city is found so we ALWAYS give an answer.
+    target_city = "New York" 
+    
+    # Check for common major cities & countries
+    if "paris" in user_text or "france" in user_text: target_city = "Paris"
+    elif "london" in user_text or "uk" in user_text: target_city = "London"
+    elif "tokyo" in user_text or "japan" in user_text: target_city = "Tokyo"
     elif "dubai" in user_text: target_city = "Dubai"
-    elif "cairo" in user_text: target_city = "Cairo"
-    elif "sunnyvale" in user_text: target_city = "Sunnyvale"
+    elif "cairo" in user_text or "egypt" in user_text: target_city = "Cairo"
+    elif "sunnyvale" in user_text or "california" in user_text: target_city = "Sunnyvale"
+    elif "san francisco" in user_text: target_city = "San Francisco"
     
     # 2. GET REAL DATA
     weather = get_live_weather(target_city)
     
+    # If even the default fails (rare), then show error
     if not weather:
-        return jsonify({"reply": "I couldn't find that city. Check your spelling, I'm a penguin, not a dictionary! 🐧"})
+        return jsonify({"reply": "I'm having trouble checking the weather right now. Try again later! 🐧"})
 
     # 3. ANALYZE USER QUESTION (The Decision Maker)
     
     # CATEGORY: CLOTHING 👗👔
     if any(word in user_text for word in ["wear", "clothes", "jacket", "jeans", "shirt", "coat", "dress", "sandals"]):
         verdict = get_clothing_advice(weather['temp'], weather['condition'])
-        reply = f"In {weather['city']}, it is {weather['temp']}°C. {verdict}"
+        reply = f"Right now in {weather['city']}, it is {weather['temp']}°C. {verdict}"
 
     # CATEGORY: TRAVEL / DRIVING 🚗✈️
     elif any(word in user_text for word in ["travel", "drive", "fly", "trip", "visit", "go to"]):
         verdict = get_travel_verdict(weather['condition'], weather['wind'])
-        reply = f"Thinking of going to {weather['city']}? {verdict} (Temp: {weather['temp']}°C)"
+        reply = f"Thinking of heading to {weather['city']}? {verdict} (Temp: {weather['temp']}°C)"
 
     # CATEGORY: KIDS / SCHOOL 🏫👶
     elif any(word in user_text for word in ["kids", "school", "safe", "baby"]):
         if weather['condition'] in ["Stormy", "Snowy"] or weather['wind'] > 50:
             reply = f"⚠️ Safety Alert: It is {weather['condition']} in {weather['city']} with high winds. Maybe keep the little ones inside today."
         else:
-            reply = f"It's {weather['temp']}°C and {weather['condition']}. Totally fine for school! Kick them out the door! 🎓"
+            reply = f"It's {weather['temp']}°C and {weather['condition']} in {weather['city']}. Totally fine for school! Kick them out the door! 🎓"
 
-    # CATEGORY: GENERAL WEATHER ☁️
-    elif any(word in user_text for word in ["weather", "forecast", "look like", "outside", "hot", "cold"]):
+    # CATEGORY: GENERAL WEATHER (The Catch-All) ☁️
+    # If the user just says "Is it cold?" or "Weather?", we fall into this bucket.
+    else:
         sarcasm = ""
         if weather['temp'] > 30: sarcasm = "Start sweating."
         elif weather['temp'] < 5: sarcasm = "Hope you like shivering."
         else: sarcasm = "Pretty boring, actually."
         
-        reply = f"Current situation in {weather['city']}: {weather['temp']}°C and {weather['condition']}. {sarcasm}"
+        reply = f"Here is the situation in {weather['city']}: {weather['temp']}°C and {weather['condition']}. {sarcasm}"
+
+    return jsonify({"reply": reply})
 
     # CATCH-ALL (If I don't understand)
     else:
