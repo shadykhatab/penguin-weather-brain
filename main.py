@@ -6,15 +6,20 @@ import google.generativeai as genai
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-# We get the key from the Server Settings (Safety First!)
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# Configure AI with a Fail-Safe Mechanism
+model = None
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    # Use the fast, free Flash model
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    try:
+        # Try the super fast Flash model first
+        model = genai.GenerativeModel('gemini-1.5-flash')
+    except:
+        # If that fails, use the stable Pro model
+        print("Flash model failed, switching to Pro")
+        model = genai.GenerativeModel('gemini-pro')
 else:
-    model = None
     print("WARNING: No API Key found! AI features will be disabled.")
 
 # --- WEATHER TOOL ---
@@ -53,14 +58,13 @@ def get_live_weather(city):
     except:
         return None
 
-# --- CHAT ENDPOINT (THE GEMINI BRAIN) ---
+# --- CHAT ENDPOINT ---
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
     user_msg = data.get('message', '')
     
-    # 1. Detect City (Simple check, or default to user's "Home Base")
-    # In a real app, you'd send the user's GPS city here.
+    # 1. Detect City context
     city_context = "New York" 
     if "paris" in user_msg.lower(): city_context = "Paris"
     elif "london" in user_msg.lower(): city_context = "London"
@@ -69,43 +73,36 @@ def chat():
 
     # 2. Get Real Weather Data
     weather_info = get_live_weather(city_context)
-    
-    if not weather_info:
-        weather_info = "Weather data unavailable."
+    if not weather_info: weather_info = "Weather data unavailable."
 
-    # 3. ASK GEMINI
+    # 3. ASK GEMINI (With error handling)
+    reply = "My brain is frozen! 🐧"
+    
     if model:
         try:
-            # The "System Prompt" tells it how to behave
             prompt = f"""
             You are a funny, sarcastic AI Penguin assistant. 
             The current weather is: {weather_info}.
-            
             The user asks: "{user_msg}"
-            
-            Rules:
-            1. Use the real weather data to answer.
-            2. Be sassy but helpful. Use penguin puns if possible.
-            3. Keep it short (under 2 sentences).
-            4. If they ask about clothes, give advice based on the temp.
+            Rules: Use the real weather data. Be sassy but helpful. Keep it short.
             """
-            
             response = model.generate_content(prompt)
             reply = response.text.strip()
-            
         except Exception as e:
-            reply = f"My brain froze! 🧊 (Error: {str(e)})"
+            # If the specific model crashes during chat, try one last fallback
+            try:
+                backup_model = genai.GenerativeModel('gemini-pro')
+                response = backup_model.generate_content(prompt)
+                reply = response.text.strip()
+            except:
+                reply = f"I'm having a bad hair day. (Error: {str(e)})"
     else:
-        reply = "I lost my API key! Please check the server settings. 🐧"
+        reply = "I lost my API key! Check server settings."
 
     return jsonify({"reply": reply})
 
 @app.route('/weather', methods=['GET'])
 def weather():
-    # Keep the old endpoint for the Home Screen numbers
-    city = request.args.get('city', 'New York')
-    # ... (Reuse simple logic or keep getting live weather)
-    # For now, let's just return simple JSON so the home screen doesn't break
     return jsonify({"temperature": "12", "condition": "Clear", "humidity": "50", "wind_speed": "10"})
 
 if __name__ == '__main__':
