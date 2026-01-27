@@ -9,64 +9,54 @@ API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # --- WEATHER TOOL ---
 def get_live_weather(city):
-    try:
-        # Find City
-        geo_url = "https://geocoding-api.open-meteo.com/v1/search"
-        geo_params = {"name": city, "count": 1, "language": "en", "format": "json"}
-        geo_res = requests.get(geo_url, params=geo_params).json()
-        
-        if "results" not in geo_res: return None
+    return "15°C and Sunny" # Simplified for this test
 
-        lat = geo_res["results"][0]["latitude"]
-        lon = geo_res["results"][0]["longitude"]
-        city_name = geo_res["results"][0]["name"]
-
-        # Get Weather
-        weather_url = "https://api.open-meteo.com/v1/forecast"
-        w_params = {
-            "latitude": lat, 
-            "longitude": lon, 
-            "current": "temperature_2m,weather_code,wind_speed_10m"
-        }
-        w_res = requests.get(weather_url, params=w_params).json()
-        current = w_res["current"]
-
-        # Decode Condition
-        code = current["weather_code"]
-        cond = "Clear"
-        if code > 2: cond = "Cloudy"
-        if code > 50: cond = "Rainy"
-        if code > 70: cond = "Snowy"
-        if code > 95: cond = "Stormy"
-
-        return f"{city_name}: {current['temperature_2m']}°C, {cond}, Wind {current['wind_speed_10m']}km/h"
-    except:
-        return None
-
-# --- DIRECT STABLE API CALL (The Fix) ---
+# --- DIRECT API CALL (DIAGNOSTIC MODE) ---
 def talk_to_google_direct(prompt):
     if not API_KEY: return "I lost my API key!"
     
-    # 1. URL: We use 'v1' (Stable) instead of 'v1beta'
-    # 2. MODEL: We use 'gemini-1.5-flash' which is the current standard
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-    
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
+    # 1. THE TRICK: We are asking for the LIST of models first
+    list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
     
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        # Step A: Ask Google what models exist
+        list_response = requests.get(list_url)
         
-        if response.status_code == 200:
-            result = response.json()
-            return result['candidates'][0]['content']['parts'][0]['text']
+        if list_response.status_code == 200:
+            data = list_response.json()
+            # We look for any model that has "generateContent" capability
+            valid_models = []
+            for m in data.get('models', []):
+                if "generateContent" in m.get('supportedGenerationMethods', []):
+                    valid_models.append(m['name'])
+            
+            # Step B: Try the first valid model we found
+            if not valid_models:
+                return "CRITICAL: Google says you have NO valid models available! (Check API Key permissions)"
+                
+            best_model = valid_models[0] # Just pick the first one that works
+            
+            # NOW we use that specific name to generate the text
+            generate_url = f"https://generativelanguage.googleapis.com/v1beta/{best_model}:generateContent?key={API_KEY}"
+            
+            headers = {'Content-Type': 'application/json'}
+            payload = {
+                "contents": [{
+                    "parts": [{"text": f"SYSTEM: You are a penguin. USER: {prompt}"}]
+                }]
+            }
+            
+            gen_response = requests.post(generate_url, headers=headers, json=payload)
+            
+            if gen_response.status_code == 200:
+                result = gen_response.json()
+                text = result['candidates'][0]['content']['parts'][0]['text']
+                return f"{text} (Powered by {best_model})"
+            else:
+                return f"Model {best_model} failed: {gen_response.text}"
+                
         else:
-            # If this fails, we will see the NEW error message
-            return f"Google Error {response.status_code}: {response.text}"
+            return f"List Failed {list_response.status_code}: {list_response.text}"
             
     except Exception as e:
         return f"Connection Failed: {str(e)}"
@@ -76,28 +66,7 @@ def talk_to_google_direct(prompt):
 def chat():
     data = request.json
     user_msg = data.get('message', '')
-    
-    # 1. Detect City
-    city_context = "New York" 
-    if "paris" in user_msg.lower(): city_context = "Paris"
-    elif "london" in user_msg.lower(): city_context = "London"
-    elif "tokyo" in user_msg.lower(): city_context = "Tokyo"
-    elif "san francisco" in user_msg.lower(): city_context = "San Francisco"
-
-    # 2. Get Real Weather
-    weather_info = get_live_weather(city_context)
-    if not weather_info: weather_info = "Weather unavailable."
-
-    # 3. ASK GOOGLE
-    prompt = f"""
-    You are a funny, sarcastic AI Penguin assistant. 
-    The current weather is: {weather_info}.
-    The user asks: "{user_msg}"
-    Rules: Be short, sassy, and helpful.
-    """
-    
-    reply = talk_to_google_direct(prompt)
-
+    reply = talk_to_google_direct(user_msg)
     return jsonify({"reply": reply})
 
 @app.route('/weather', methods=['GET'])
