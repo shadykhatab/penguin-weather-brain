@@ -8,20 +8,6 @@ app = Flask(__name__)
 # --- CONFIGURATION ---
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Configure AI with a Fail-Safe
-model = None
-if API_KEY:
-    genai.configure(api_key=API_KEY)
-    try:
-        # 1. Try the modern Flash model
-        model = genai.GenerativeModel('gemini-1.5-flash')
-    except:
-        # 2. Fallback to the classic Pro model
-        print("Flash failed, using Pro")
-        model = genai.GenerativeModel('gemini-pro')
-else:
-    print("WARNING: No API Key found!")
-
 # --- WEATHER TOOL ---
 def get_live_weather(city):
     try:
@@ -58,6 +44,36 @@ def get_live_weather(city):
     except:
         return None
 
+# --- SMART AI GENERATOR ---
+def generate_penguin_response(prompt):
+    if not API_KEY: return "I lost my API key!"
+    
+    genai.configure(api_key=API_KEY)
+    
+    # LIST OF MODELS TO TRY (In order of speed/preference)
+    model_candidates = [
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro',
+        'gemini-1.0-pro',
+        'gemini-pro'
+    ]
+    
+    errors = []
+    
+    for model_name in model_candidates:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text.strip() # If this works, we return immediately!
+        except Exception as e:
+            errors.append(f"{model_name}: {str(e)}")
+            continue # If it fails, try the next one in the list
+            
+    # If ALL fail, print the errors so we can debug
+    print("ALL MODELS FAILED:", errors)
+    return "I'm having a total meltdown. 🤯 (Check Server Logs)"
+
 # --- CHAT ENDPOINT ---
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -75,30 +91,15 @@ def chat():
     weather_info = get_live_weather(city_context)
     if not weather_info: weather_info = "Weather unavailable."
 
-    # 3. ASK GEMINI
-    reply = "Penguin is sleeping... 💤" # Default message
+    # 3. ASK THE SMART GENERATOR
+    prompt = f"""
+    You are a funny, sarcastic AI Penguin assistant. 
+    The current weather is: {weather_info}.
+    The user asks: "{user_msg}"
+    Rules: Be short, sassy, and helpful.
+    """
     
-    if model:
-        try:
-            prompt = f"""
-            You are a funny, sarcastic AI Penguin assistant. 
-            The current weather is: {weather_info}.
-            The user asks: "{user_msg}"
-            Rules: Be short, sassy, and helpful.
-            """
-            response = model.generate_content(prompt)
-            reply = response.text.strip()
-        except Exception as e:
-            # TRY BACKUP MODEL
-            try:
-                backup = genai.GenerativeModel('gemini-pro')
-                response = backup.generate_content(prompt)
-                reply = response.text.strip()
-            except:
-                # If both fail, we show THIS NEW ERROR
-                reply = f"System Overload! 💥 (Error: {str(e)})"
-    else:
-        reply = "I lost my API key!"
+    reply = generate_penguin_response(prompt)
 
     return jsonify({"reply": reply})
 
