@@ -43,12 +43,13 @@ def get_live_weather(city):
     except:
         return None
 
-# --- DIRECT API CALL (The Fix) ---
+# --- DIRECT STABLE API CALL (The Fix) ---
 def talk_to_google_direct(prompt):
     if not API_KEY: return "I lost my API key!"
     
-    # We switched from 'gemini-1.5-flash' to 'gemini-pro' (The Classic)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
+    # 1. URL: We use 'v1' (Stable) instead of 'v1beta'
+    # 2. MODEL: We use 'gemini-1.5-flash' which is the current standard
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
     headers = {'Content-Type': 'application/json'}
     payload = {
@@ -64,6 +65,7 @@ def talk_to_google_direct(prompt):
             result = response.json()
             return result['candidates'][0]['content']['parts'][0]['text']
         else:
+            # If this fails, we will see the NEW error message
             return f"Google Error {response.status_code}: {response.text}"
             
     except Exception as e:
