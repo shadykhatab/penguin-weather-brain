@@ -8,24 +8,24 @@ app = Flask(__name__)
 # --- CONFIGURATION ---
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Configure AI with a Fail-Safe Mechanism
+# Configure AI with a Fail-Safe
 model = None
 if API_KEY:
     genai.configure(api_key=API_KEY)
     try:
-        # Try the super fast Flash model first
+        # 1. Try the modern Flash model
         model = genai.GenerativeModel('gemini-1.5-flash')
     except:
-        # If that fails, use the stable Pro model
-        print("Flash model failed, switching to Pro")
+        # 2. Fallback to the classic Pro model
+        print("Flash failed, using Pro")
         model = genai.GenerativeModel('gemini-pro')
 else:
-    print("WARNING: No API Key found! AI features will be disabled.")
+    print("WARNING: No API Key found!")
 
 # --- WEATHER TOOL ---
 def get_live_weather(city):
     try:
-        # 1. Find City
+        # Find City
         geo_url = "https://geocoding-api.open-meteo.com/v1/search"
         geo_params = {"name": city, "count": 1, "language": "en", "format": "json"}
         geo_res = requests.get(geo_url, params=geo_params).json()
@@ -36,7 +36,7 @@ def get_live_weather(city):
         lon = geo_res["results"][0]["longitude"]
         city_name = geo_res["results"][0]["name"]
 
-        # 2. Get Weather
+        # Get Weather
         weather_url = "https://api.open-meteo.com/v1/forecast"
         w_params = {
             "latitude": lat, 
@@ -46,7 +46,7 @@ def get_live_weather(city):
         w_res = requests.get(weather_url, params=w_params).json()
         current = w_res["current"]
 
-        # 3. Simple Condition Map
+        # Decode Condition
         code = current["weather_code"]
         cond = "Clear"
         if code > 2: cond = "Cloudy"
@@ -64,19 +64,19 @@ def chat():
     data = request.json
     user_msg = data.get('message', '')
     
-    # 1. Detect City context
+    # 1. Detect City
     city_context = "New York" 
     if "paris" in user_msg.lower(): city_context = "Paris"
     elif "london" in user_msg.lower(): city_context = "London"
     elif "tokyo" in user_msg.lower(): city_context = "Tokyo"
     elif "san francisco" in user_msg.lower(): city_context = "San Francisco"
 
-    # 2. Get Real Weather Data
+    # 2. Get Real Weather
     weather_info = get_live_weather(city_context)
-    if not weather_info: weather_info = "Weather data unavailable."
+    if not weather_info: weather_info = "Weather unavailable."
 
-    # 3. ASK GEMINI (With error handling)
-    reply = "My brain is frozen! 🐧"
+    # 3. ASK GEMINI
+    reply = "Penguin is sleeping... 💤" # Default message
     
     if model:
         try:
@@ -84,20 +84,21 @@ def chat():
             You are a funny, sarcastic AI Penguin assistant. 
             The current weather is: {weather_info}.
             The user asks: "{user_msg}"
-            Rules: Use the real weather data. Be sassy but helpful. Keep it short.
+            Rules: Be short, sassy, and helpful.
             """
             response = model.generate_content(prompt)
             reply = response.text.strip()
         except Exception as e:
-            # If the specific model crashes during chat, try one last fallback
+            # TRY BACKUP MODEL
             try:
-                backup_model = genai.GenerativeModel('gemini-pro')
-                response = backup_model.generate_content(prompt)
+                backup = genai.GenerativeModel('gemini-pro')
+                response = backup.generate_content(prompt)
                 reply = response.text.strip()
             except:
-                reply = f"I'm having a bad hair day. (Error: {str(e)})"
+                # If both fail, we show THIS NEW ERROR
+                reply = f"System Overload! 💥 (Error: {str(e)})"
     else:
-        reply = "I lost my API key! Check server settings."
+        reply = "I lost my API key!"
 
     return jsonify({"reply": reply})
 
