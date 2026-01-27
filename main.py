@@ -1,7 +1,6 @@
 import os
 from flask import Flask, request, jsonify
 import requests
-import google.generativeai as genai
 
 app = Flask(__name__)
 
@@ -44,35 +43,34 @@ def get_live_weather(city):
     except:
         return None
 
-# --- SMART AI GENERATOR ---
-def generate_penguin_response(prompt):
+# --- DIRECT API CALL (No Library) ---
+def talk_to_google_direct(prompt):
     if not API_KEY: return "I lost my API key!"
     
-    genai.configure(api_key=API_KEY)
+    # We use the raw REST API URL
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
-    # LIST OF MODELS TO TRY (In order of speed/preference)
-    model_candidates = [
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-pro',
-        'gemini-1.0-pro',
-        'gemini-pro'
-    ]
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
     
-    errors = []
-    
-    for model_name in model_candidates:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            return response.text.strip() # If this works, we return immediately!
-        except Exception as e:
-            errors.append(f"{model_name}: {str(e)}")
-            continue # If it fails, try the next one in the list
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        
+        # Check if Google is happy
+        if response.status_code == 200:
+            result = response.json()
+            # Extract the text from the complex JSON answer
+            return result['candidates'][0]['content']['parts'][0]['text']
+        else:
+            # If it fails, print the REAL error from Google
+            return f"Google Error {response.status_code}: {response.text}"
             
-    # If ALL fail, print the errors so we can debug
-    print("ALL MODELS FAILED:", errors)
-    return "I'm having a total meltdown. 🤯 (Check Server Logs)"
+    except Exception as e:
+        return f"Connection Failed: {str(e)}"
 
 # --- CHAT ENDPOINT ---
 @app.route('/chat', methods=['POST'])
@@ -91,7 +89,7 @@ def chat():
     weather_info = get_live_weather(city_context)
     if not weather_info: weather_info = "Weather unavailable."
 
-    # 3. ASK THE SMART GENERATOR
+    # 3. ASK GOOGLE DIRECTLY
     prompt = f"""
     You are a funny, sarcastic AI Penguin assistant. 
     The current weather is: {weather_info}.
@@ -99,7 +97,7 @@ def chat():
     Rules: Be short, sassy, and helpful.
     """
     
-    reply = generate_penguin_response(prompt)
+    reply = talk_to_google_direct(prompt)
 
     return jsonify({"reply": reply})
 
