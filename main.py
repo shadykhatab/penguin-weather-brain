@@ -43,12 +43,12 @@ def get_live_weather(city):
     except:
         return None
 
-# --- DIRECT API CALL (No Library) ---
+# --- DIRECT API CALL (The Fix) ---
 def talk_to_google_direct(prompt):
     if not API_KEY: return "I lost my API key!"
     
-    # We use the raw REST API URL
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+    # We switched from 'gemini-1.5-flash' to 'gemini-pro' (The Classic)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
     
     headers = {'Content-Type': 'application/json'}
     payload = {
@@ -60,13 +60,10 @@ def talk_to_google_direct(prompt):
     try:
         response = requests.post(url, headers=headers, json=payload)
         
-        # Check if Google is happy
         if response.status_code == 200:
             result = response.json()
-            # Extract the text from the complex JSON answer
             return result['candidates'][0]['content']['parts'][0]['text']
         else:
-            # If it fails, print the REAL error from Google
             return f"Google Error {response.status_code}: {response.text}"
             
     except Exception as e:
@@ -89,7 +86,7 @@ def chat():
     weather_info = get_live_weather(city_context)
     if not weather_info: weather_info = "Weather unavailable."
 
-    # 3. ASK GOOGLE DIRECTLY
+    # 3. ASK GOOGLE
     prompt = f"""
     You are a funny, sarcastic AI Penguin assistant. 
     The current weather is: {weather_info}.
